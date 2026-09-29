@@ -6,6 +6,7 @@ const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement;
 const banner = document.getElementById('no-webgpu-banner') as HTMLDivElement;
 
 const fpsVal = document.getElementById('fps-val') as HTMLSpanElement;
+const spsVal = document.getElementById('sps-val') as HTMLSpanElement;
 const genVal = document.getElementById('gen-val') as HTMLSpanElement;
 const cellsVal = document.getElementById('cells-val') as HTMLSpanElement;
 const gpuVal = document.getElementById('gpu-val') as HTMLSpanElement;
@@ -14,6 +15,7 @@ const btnPlay = document.getElementById('btn-play') as HTMLButtonElement;
 const playIcon = document.getElementById('play-icon') as HTMLSpanElement;
 const playText = document.getElementById('play-text') as HTMLSpanElement;
 const btnStep = document.getElementById('btn-step') as HTMLButtonElement;
+const btnRandom = document.getElementById('btn-random') as HTMLButtonElement;
 const btnClear = document.getElementById('btn-clear') as HTMLButtonElement;
 
 const resolutionSelect = document.getElementById('resolution-select') as HTMLSelectElement;
@@ -21,7 +23,6 @@ const stepsSlider = document.getElementById('steps-per-frame') as HTMLInputEleme
 const stepsVal = document.getElementById('steps-val') as HTMLSpanElement;
 const speedSlider = document.getElementById('speed-limit') as HTMLInputElement;
 const speedVal = document.getElementById('speed-val') as HTMLSpanElement;
-const colorThemeSelect = document.getElementById('color-theme') as HTMLSelectElement;
 const gridlinesCheckbox = document.getElementById('gridlines-checkbox') as HTMLInputElement;
 
 const brushDrawBtn = document.getElementById('brush-draw') as HTMLButtonElement;
@@ -29,21 +30,17 @@ const brushEraseBtn = document.getElementById('brush-erase') as HTMLButtonElemen
 const brushSizeSlider = document.getElementById('brush-size') as HTMLInputElement;
 const brushVal = document.getElementById('brush-val') as HTMLSpanElement;
 
-const btnTheory = document.getElementById('btn-theory') as HTMLButtonElement;
-const theoryModal = document.getElementById('theory-modal') as HTMLDivElement;
-const modalClose = document.getElementById('modal-close') as HTMLButtonElement;
-const modalBackdrop = theoryModal.querySelector('.modal-backdrop') as HTMLDivElement;
-const tabBtns = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
-const tabPanes = document.querySelectorAll<HTMLElement>('.tab-pane');
-
 // State variables
 let simulator: WebGPUSimulator | null = null;
 let isRunning = true;
 let stepsPerFrame = 1;
-let targetFps = 60;
-let lastStepTime = 0;
-let frameCount = 0;
-let lastFpsUpdateTime = performance.now();
+let targetSpeed = 60; // steps per second (10 to 240)
+let accumulatedTime = 0;
+let lastFrameTime = performance.now();
+
+let renderFrameCount = 0;
+let simStepsCount = 0;
+let lastMetricsUpdateTime = performance.now();
 
 let isDrawing = false;
 let brushMode: 'draw' | 'erase' = 'draw';
@@ -52,13 +49,14 @@ let brushRadius = 1;
 function updateCanvasDimensions() {
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
+  // Ensure square canvas pixel buffer matching square display
+  const size = Math.min(rect.width, rect.height);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const displayWidth = Math.floor(rect.width * dpr);
-  const displayHeight = Math.floor(rect.height * dpr);
+  const pixelSize = Math.max(128, Math.floor(size * dpr));
 
-  if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-    canvas.width = displayWidth;
-    canvas.height = displayHeight;
+  if (canvas.width !== pixelSize || canvas.height !== pixelSize) {
+    canvas.width = pixelSize;
+    canvas.height = pixelSize;
     if (simulator && !isRunning) {
       simulator.renderOnly();
     }
@@ -81,7 +79,6 @@ async function startApp() {
     canvas,
     width: initialRes,
     height: initialRes,
-    colorScheme: parseInt(colorThemeSelect.value, 10),
     gridLines: gridlinesCheckbox.checked
   });
 
@@ -94,7 +91,6 @@ async function startApp() {
     return;
   }
 
-  // Update GPU info
   const adapterInfo = simulator.getAdapterInfo();
   if (adapterInfo) {
     const name = (adapterInfo as any).device || (adapterInfo as any).architecture || adapterInfo.vendor || "WebGPU GPU";
@@ -105,6 +101,7 @@ async function startApp() {
 
   updateCellCounter();
   setupEventListeners();
+  lastFrameTime = performance.now();
   requestAnimationFrame(loop);
 }
 
@@ -119,23 +116,37 @@ function loop(currentTime: number) {
 
   if (!simulator) return;
 
-  // FPS calculation
-  frameCount++;
-  const elapsedSinceFps = currentTime - lastFpsUpdateTime;
-  if (elapsedSinceFps >= 500) {
-    const fps = Math.round((frameCount * 1000) / elapsedSinceFps);
+  const delta = Math.min(currentTime - lastFrameTime, 100);
+  lastFrameTime = currentTime;
+
+  renderFrameCount++;
+
+  // Performance metrics update every 500ms
+  const elapsedMetrics = currentTime - lastMetricsUpdateTime;
+  if (elapsedMetrics >= 500) {
+    const fps = Math.round((renderFrameCount * 1000) / elapsedMetrics);
+    const sps = Math.round((simStepsCount * 1000) / elapsedMetrics);
     fpsVal.textContent = fps.toString();
-    frameCount = 0;
-    lastFpsUpdateTime = currentTime;
+    spsVal.textContent = sps.toString();
+    renderFrameCount = 0;
+    simStepsCount = 0;
+    lastMetricsUpdateTime = currentTime;
   }
 
   if (isRunning) {
-    const minInterval = 1000 / targetFps;
-    const timeSinceLastStep = currentTime - lastStepTime;
+    const stepInterval = 1000 / targetSpeed;
+    accumulatedTime += delta;
 
-    if (timeSinceLastStep >= minInterval) {
-      simulator.stepAndRender(stepsPerFrame);
-      lastStepTime = currentTime - (timeSinceLastStep % minInterval);
+    let stepsToExecute = 0;
+    while (accumulatedTime >= stepInterval) {
+      stepsToExecute += stepsPerFrame;
+      accumulatedTime -= stepInterval;
+      if (stepsToExecute >= 40) break; // clamp to prevent death spiral on tab switch
+    }
+
+    if (stepsToExecute > 0) {
+      simulator.stepAndRender(stepsToExecute);
+      simStepsCount += stepsToExecute;
       genVal.textContent = simulator.generation.toLocaleString('sk-SK');
     }
   }
@@ -147,6 +158,8 @@ function togglePlay() {
     btnPlay.classList.add('running');
     playIcon.textContent = '⏸';
     playText.textContent = 'Pozastaviť';
+    lastFrameTime = performance.now();
+    accumulatedTime = 0;
   } else {
     btnPlay.classList.remove('running');
     playIcon.textContent = '▶';
@@ -169,10 +182,8 @@ function paintAtMouseEvent(e: MouseEvent) {
 }
 
 function setupEventListeners() {
-  // Play / Pause
   btnPlay.addEventListener('click', togglePlay);
 
-  // Keyboard shortcut Spacebar
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && (e.target as HTMLElement).tagName !== 'BUTTON') {
       e.preventDefault();
@@ -180,14 +191,20 @@ function setupEventListeners() {
     }
   });
 
-  // Step
   btnStep.addEventListener('click', () => {
     if (!simulator) return;
     simulator.stepAndRender(1);
+    simStepsCount++;
     genVal.textContent = simulator.generation.toLocaleString('sk-SK');
   });
 
-  // Clear
+  btnRandom.addEventListener('click', () => {
+    if (!simulator) return;
+    simulator.randomize(0.25);
+    genVal.textContent = '0';
+    if (!isRunning) simulator.renderOnly();
+  });
+
   btnClear.addEventListener('click', () => {
     if (!simulator) return;
     simulator.clear();
@@ -195,34 +212,6 @@ function setupEventListeners() {
     if (!isRunning) simulator.renderOnly();
   });
 
-  // Presets
-  document.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const presetKey = btn.dataset.preset;
-      if (presetKey && simulator) {
-        simulator.loadPreset(presetKey);
-        genVal.textContent = '0';
-        if (!isRunning) simulator.renderOnly();
-      }
-    });
-  });
-
-  // Actions (Randomize)
-  document.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const action = btn.dataset.action;
-      if (!simulator) return;
-      if (action === 'random-25') {
-        simulator.randomize(0.25);
-      } else if (action === 'random-50') {
-        simulator.randomize(0.50);
-      }
-      genVal.textContent = '0';
-      if (!isRunning) simulator.renderOnly();
-    });
-  });
-
-  // Resolution selector
   resolutionSelect.addEventListener('change', () => {
     if (!simulator) return;
     const res = parseInt(resolutionSelect.value, 10);
@@ -232,33 +221,22 @@ function setupEventListeners() {
     if (!isRunning) simulator.renderOnly();
   });
 
-  // Substeps
   stepsSlider.addEventListener('input', () => {
     stepsPerFrame = parseInt(stepsSlider.value, 10);
     stepsVal.textContent = `${stepsPerFrame}×`;
   });
 
-  // Target FPS / Speed
   speedSlider.addEventListener('input', () => {
-    targetFps = parseInt(speedSlider.value, 10);
-    speedVal.textContent = targetFps.toString();
+    targetSpeed = parseInt(speedSlider.value, 10);
+    speedVal.textContent = targetSpeed.toString();
   });
 
-  // Color theme
-  colorThemeSelect.addEventListener('change', () => {
-    if (!simulator) return;
-    simulator.setColorScheme(parseInt(colorThemeSelect.value, 10));
-    if (!isRunning) simulator.renderOnly();
-  });
-
-  // Grid lines
   gridlinesCheckbox.addEventListener('change', () => {
     if (!simulator) return;
     simulator.setGridLines(gridlinesCheckbox.checked);
     if (!isRunning) simulator.renderOnly();
   });
 
-  // Brush controls
   brushDrawBtn.addEventListener('click', () => {
     brushMode = 'draw';
     brushDrawBtn.classList.add('active');
@@ -276,7 +254,6 @@ function setupEventListeners() {
     brushVal.textContent = `${brushRadius} px`;
   });
 
-  // Mouse Painting
   canvas.addEventListener('pointerdown', (e) => {
     isDrawing = true;
     paintAtMouseEvent(e);
@@ -291,35 +268,6 @@ function setupEventListeners() {
   window.addEventListener('pointerup', () => {
     isDrawing = false;
   });
-
-  // Theory Modal
-  btnTheory.addEventListener('click', () => {
-    theoryModal.classList.remove('hidden');
-  });
-
-  modalClose.addEventListener('click', () => {
-    theoryModal.classList.add('hidden');
-  });
-
-  modalBackdrop.addEventListener('click', () => {
-    theoryModal.classList.add('hidden');
-  });
-
-  // Tabs
-  tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const targetId = btn.dataset.tab;
-      if (!targetId) return;
-
-      tabBtns.forEach(b => b.classList.remove('active'));
-      tabPanes.forEach(p => p.classList.remove('active'));
-
-      btn.classList.add('active');
-      const pane = document.getElementById(targetId);
-      if (pane) pane.classList.add('active');
-    });
-  });
 }
 
-// Start
 window.addEventListener('DOMContentLoaded', startApp);

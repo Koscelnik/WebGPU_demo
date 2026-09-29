@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="sk">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <title>WebGPU Parallel Game of Life | Modern Compute Demo</title>
+  <title>WebGPU Parallel Game of Life</title>
   <link rel="stylesheet" href="./src/style.css" />
 </head>
+
 <body>
   <div id="app">
     <!-- WebGPU Unsupported Banner -->
@@ -16,14 +17,14 @@
         <div>
           <h3>Váš prehliadač nepodporuje WebGPU</h3>
           <p>
-            WebGPU vyžaduje moderný prehliadač (Google Chrome 113+, Microsoft Edge 113+, Safari 18+ alebo Firefox Nightly s povoleným príznakom <code>dom.webgpu.enabled</code>).
-            Uistite sa, že máte zapnutú hardvérovú akceleráciu.
+            WebGPU vyžaduje moderný prehliadač (Google Chrome 113+, Microsoft Edge 113+, Safari 18+ alebo Firefox
+            Nightly s povoleným príznakom <code>dom.webgpu.enabled</code>).
           </p>
         </div>
       </div>
     </div>
 
-    <!-- Main Canvas Viewport -->
+    <!-- Main Canvas Viewport (Square, Pixel-Accurate) -->
     <main class="canvas-container">
       <canvas id="gpu-canvas"></canvas>
 
@@ -35,11 +36,15 @@
             <span id="fps-val" class="hud-value highlight">--</span>
           </div>
           <div class="hud-item">
+            <span class="hud-label">Krokov/s:</span>
+            <span id="sps-val" class="hud-value highlight">--</span>
+          </div>
+          <div class="hud-item">
             <span class="hud-label">Generácia:</span>
             <span id="gen-val" class="hud-value">0</span>
           </div>
           <div class="hud-item">
-            <span class="hud-label">Bunky celkovo:</span>
+            <span class="hud-label">Bunky:</span>
             <span id="cells-val" class="hud-value">262,144</span>
           </div>
           <div class="hud-item">
@@ -49,20 +54,18 @@
         </div>
       </div>
 
-      <!-- Quick Hint Overlay -->
       <div class="canvas-hint">
-        <span>💡 Kliknite a ťahajte myšou pre kreslenie buniek na plátno. Medzerník = Štart/Pauza.</span>
+        <span>💡 Kreslite myšou po mriežke. Medzerník = Štart/Pauza.</span>
       </div>
     </main>
 
-    <!-- Floating Glassmorphic Control Panel -->
+    <!-- Bare-bone Control Panel -->
     <aside class="control-panel">
       <header class="panel-header">
         <div class="logo-area">
-          <div class="gpu-badge">WGSL</div>
-          <h1>WebGPU Cellular Automata</h1>
+          <div class="gpu-badge">WebGPU</div>
+          <h1>Game of Life</h1>
         </div>
-        <p class="subtitle">Paralelná Conway's Game of Life na Compute Shaderoch</p>
       </header>
 
       <section class="panel-section">
@@ -74,22 +77,12 @@
           <button id="btn-step" class="btn btn-secondary" title="Krok o 1 generáciu">
             <span class="icon">⏭</span> Krok
           </button>
+          <button id="btn-random" class="btn btn-secondary" title="Náhodne naplniť bunky">
+            <span class="icon">🎲</span> Náhodne
+          </button>
           <button id="btn-clear" class="btn btn-danger" title="Vyčistiť mriežku">
             <span class="icon">🗑</span> Zmazať
           </button>
-        </div>
-      </section>
-
-      <section class="panel-section">
-        <label class="section-label">Vzory a Presety</label>
-        <div class="preset-grid">
-          <button class="btn btn-chip" data-preset="gosperGun">Gosper Gun</button>
-          <button class="btn btn-chip" data-preset="pulsar">Pulsar</button>
-          <button class="btn btn-chip" data-preset="pentadecathlon">Pentadecathlon</button>
-          <button class="btn btn-chip" data-preset="acorn">Acorn</button>
-          <button class="btn btn-chip" data-preset="lwss">Vesmírna loď</button>
-          <button class="btn btn-chip" data-action="random-25">Náhodne 25%</button>
-          <button class="btn btn-chip" data-action="random-50">Náhodne 50%</button>
         </div>
       </section>
 
@@ -106,36 +99,25 @@
         </div>
 
         <div class="form-row">
-          <label for="steps-per-frame">Výpočtov za snímku (Substeps):</label>
+          <label for="speed-limit">Rýchlosť simulácie (krokov/s):</label>
+          <div class="slider-with-val">
+            <input type="range" id="speed-limit" min="10" max="240" value="60" step="5" class="form-slider" />
+            <span id="speed-val" class="slider-num">60</span>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label for="steps-per-frame">Substeps (výpočtov na frame):</label>
           <div class="slider-with-val">
             <input type="range" id="steps-per-frame" min="1" max="20" value="1" class="form-slider" />
             <span id="steps-val" class="slider-num">1×</span>
           </div>
         </div>
 
-        <div class="form-row">
-          <label for="speed-limit">Limit rýchlosti (krokov/s):</label>
-          <div class="slider-with-val">
-            <input type="range" id="speed-limit" min="5" max="60" value="60" step="5" class="form-slider" />
-            <span id="speed-val" class="slider-num">60</span>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <label for="color-theme">Farebná paleta:</label>
-          <select id="color-theme" class="form-select">
-            <option value="0" selected>Cyberpunk Cyan / Neon Blue</option>
-            <option value="1">Solar Sunset (Zlatá & Magenta)</option>
-            <option value="2">Electric Violet (Fialová & Modrá)</option>
-            <option value="3">Classic Matrix Green</option>
-            <option value="4">Monochromatická biela</option>
-          </select>
-        </div>
-
         <div class="form-row checkbox-row">
           <label for="gridlines-checkbox">
             <input type="checkbox" id="gridlines-checkbox" />
-            Zobraziť mriežku (pre menšie rozlíšenia)
+            Zobraziť mriežku
           </label>
         </div>
       </section>
@@ -152,219 +134,27 @@
         <div class="form-row">
           <label for="brush-size">Veľkosť štetca:</label>
           <div class="slider-with-val">
-            <input type="range" id="brush-size" min="0" max="10" value="1" class="form-slider" />
+            <input type="range" id="brush-size" min="0" max="15" value="1" class="form-slider" />
             <span id="brush-val" class="slider-num">1 px</span>
           </div>
         </div>
       </section>
 
       <footer class="panel-footer">
-        <button id="btn-theory" class="btn btn-info w-full">
-          <span class="icon">📖</span> Teoretický rozbor (WebGPU vs WebGL)
-        </button>
         <div class="github-link-row">
           <a href="https://github.com/Koscelnik/WebGPU_demo.git" target="_blank" rel="noopener noreferrer">
             <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
             </svg>
             GitHub Repozitár
           </a>
         </div>
       </footer>
     </aside>
-
-    <!-- Modal: Teoretická časť a porovnanie s WebGL -->
-    <div id="theory-modal" class="modal hidden">
-      <div class="modal-backdrop"></div>
-      <div class="modal-dialog">
-        <header class="modal-header">
-          <h2>Analýza moderného rozhrania WebGPU a porovnanie s WebGL</h2>
-          <button id="modal-close" class="modal-close-btn">&times;</button>
-        </header>
-
-        <div class="modal-content">
-          <nav class="theory-tabs">
-            <button class="tab-btn active" data-tab="tab-overview">1. Prehľad & WebGPU vs WebGL</button>
-            <button class="tab-btn" data-tab="tab-buffers">2. Explicitné pamäťové buffery</button>
-            <button class="tab-btn" data-tab="tab-pso">3. Pipeline State Objects (PSO)</button>
-            <button class="tab-btn" data-tab="tab-sync">4. Synchronizácia & Encodery</button>
-            <button class="tab-btn" data-tab="tab-compute">5. Compute Shadery & WGSL</button>
-          </nav>
-
-          <div class="tab-body">
-            <!-- TAB 1: OVERVIEW -->
-            <article id="tab-overview" class="tab-pane active">
-              <h3>WebGPU vs. WebGL: Generačný skok v grafických API na webe</h3>
-              <p>
-                <strong>WebGL</strong> (založený na OpenGL ES 2.0 / 3.0) vznikol v roku 2011 a odzrkadľuje architektúru GPU z prelomu tisícročí. WebGL funguje ako globálny stavový automat s obrovskou réžiou na strane ovládača (CPU overhead) a chýba mu podpora všeobecných výpočtov.
-              </p>
-              <p>
-                <strong>WebGPU</strong> je úplne nové nízkoúrovňové rozhranie vyvíjané konzorciom W3C v spolupráci s Apple, Google, Mozilla a Microsoft. Priamo mapuje moderné natívne grafické rozhrania:
-                <strong>Vulkan</strong> (Linux/Android/Windows), <strong>Metal</strong> (macOS/iOS) a <strong>DirectX 12</strong> (Windows).
-              </p>
-
-              <table class="comparison-table">
-                <thead>
-                  <tr>
-                    <th>Vlastnosť</th>
-                    <th>WebGL 2.0 (OpenGL ES 3.0)</th>
-                    <th>WebGPU</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><strong>Podkladové API</strong></td>
-                    <td>OpenGL ES 3.0 (historický model)</td>
-                    <td>Direct3D 12, Vulkan, Metal</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Compute Shadery</strong></td>
-                    <td>❌ Žiadne (iba triky cez fragment shader a framebuffery)</td>
-                    <td>✅ Plná priama podpora (General-Purpose GPU Compute)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Stavový model</strong></td>
-                    <td>Globálny mutovateľný stavový automat (State Machine)</td>
-                    <td>Nemenné Pipeline State Objects (PSO)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Manažment pamäte</strong></td>
-                    <td>Implicitný, ovládač odhaduje zarovnanie a synchronizáciu</td>
-                    <td>Explicitný cez <code>GPUBuffer</code>, mapovanie a flags</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Jazyk shaderov</strong></td>
-                    <td>GLSL ES (OpenGL Shading Language)</td>
-                    <td>WGSL (WebGPU Shading Language)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Viacvláknovosť</strong></td>
-                    <td>Iba na jednom hlavnom vlákne (obmedzený OffscreenCanvas)</td>
-                    <td>Asynchrónne enkodovanie príkazov z viacerých Web Workerov</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Réžia CPU ovládača</strong></td>
-                    <td>Vysoká (validácia stavu pri každom <code>drawArrays</code>)</td>
-                    <td>Minimálna (validácia prebieha vopred pri zostavení PSO)</td>
-                  </tr>
-                </tbody>
-              </table>
-            </article>
-
-            <!-- TAB 2: BUFFERS -->
-            <article id="tab-buffers" class="tab-pane">
-              <h3>1. Explicitné pamäťové buffery</h3>
-              <p>
-                Vo WebGL programátor nevedel, kde presne je pamäť alokovaná ani aké obmedzenia má hardvér. WebGPU vyžaduje <strong>explicitné určenie účelu a alokácie</strong> pri vytváraní buffera:
-              </p>
-              <pre><code>// Vytvorenie explicitného úložného buffera (Storage Buffer) pre bunky:
-const cellBuffer = device.createBuffer({
-  label: "Cell-Buffer-Storage",
-  size: totalCells * Uint32Array.BYTES_PER_ELEMENT,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
-});</code></pre>
-              <ul>
-                <li>
-                  <strong><code>GPUBufferUsage.STORAGE</code>:</strong> Umožňuje priamy čítací a zapisovací prístup zo shaderov (ako pole štruktúr alebo primitívnych typov v pamäti VRAM).
-                </li>
-                <li>
-                  <strong><code>GPUBufferUsage.UNIFORM</code>:</strong> Rýchla vyrovnávacia pamäť s prísnym 16-bajtovým zarovnaním pre globálne parametre (napr. rozmery mriežky, farby).
-                </li>
-                <li>
-                  <strong><code>GPUBufferUsage.COPY_DST</code> a <code>MAP_READ / MAP_WRITE</code>:</strong> Zabezpečuje bezpečný prenos dát medzi RAM (CPU) a VRAM (GPU) bez nepredvídateľných blokovaní renderovacieho vlákna.
-                </li>
-                <li>
-                  <strong>Ping-Pong buffering:</strong> Pre Conway's Game of Life využívame 2 explicitné buffery (Buffer A a Buffer B). Compute shader číta stav z jedného buffera a zapisuje novú generáciu do druhého, čím sa zabraňuje race conditions bez potreby zámkov.
-                </li>
-              </ul>
-            </article>
-
-            <!-- TAB 3: PSO -->
-            <article id="tab-pso" class="tab-pane">
-              <h3>2. Pipeline State Objects (PSO)</h3>
-              <p>
-                V starom WebGL ste pred vykreslením volali sériu príkazov: <code>gl.useProgram(...)</code>, <code>gl.bindBuffer(...)</code>, <code>gl.enable(gl.BLEND)</code>, <code>gl.blendFunc(...)</code>. Ovládač grafickej karty musel pri každom volaní overovať, či je kombinácia týchto prepínačov platná pre hardvér, čo spôsobovalo vysokú latenciu a zadrhávanie snímok (micro-stuttering).
-              </p>
-              <p>
-                <strong>WebGPU namiesto toho zavádza nemenné (immutable) Pipeline State Objects:</strong>
-              </p>
-              <pre><code>// Zostavenie Compute Pipeline vopred:
-this.computePipeline = device.createComputePipeline({
-  layout: 'auto',
-  compute: {
-    module: computeShaderModule,
-    entryPoint: 'main'
-  }
-});
-
-// Zostavenie Render Pipeline s vertex a fragment shaderom, blendovaním a topológiou:
-this.renderPipeline = device.createRenderPipeline({
-  layout: 'auto',
-  vertex: { module: renderShaderModule, entryPoint: 'vs_main' },
-  fragment: { module: renderShaderModule, entryPoint: 'fs_main', targets: [{ format }] },
-  primitive: { topology: 'triangle-list' }
-});</code></pre>
-              <p>
-                Akonáhle je PSO vytvorené, ovládač ho vopred skompiluje a optimalizuje priamo do strojového kódu GPU. Počas vykresľovacieho cyklu stačí zavolať jediný prepínač <code>pass.setPipeline(pipeline)</code>, čo má prakticky nulovú réžiu na CPU.
-              </p>
-            </article>
-
-            <!-- TAB 4: SYNC -->
-            <article id="tab-sync" class="tab-pane">
-              <h3>3. Synchronizácia a Command Encodery</h3>
-              <p>
-                WebGL odosielal príkazy GPU okamžite (Immediate Mode), čím nútil CPU čakať na synchronizáciu stavov. WebGPU funguje na princípe <strong>záznamu a dávkového odoslania (Command Recording & Batch Submission)</strong>:
-              </p>
-              <ol>
-                <li>
-                  <strong><code>GPUCommandEncoder</code>:</strong> Slúži ako nahrávač grafických a výpočtových inštrukcií do lineárneho poľa v pamäti CPU.
-                </li>
-                <li>
-                  <strong>Pass Encodery:</strong> Príkazy sa rozdeľujú do logických fáz – <code>computePass</code> (výpočet stavu automatu) a <code>renderPass</code> (vykreslenie pixelov).
-                </li>
-                <li>
-                  <strong>Synchronizačné bariéry:</strong> WebGPU automaticky rieši závislosti medzi priechodmi (hazard tracking). Ak Compute Pass zapíše do Buffera B a nasledujúci Render Pass z neho číta, ovládač zabezpečí korektnú pamäťovú bariéru bez manuálnych semaforov.
-                </li>
-                <li>
-                  <strong>Dávkové odoslanie cez <code>queue.submit()</code>:</strong> Všetky príkazy pre celý frame sa odošlú GPU jedným volaním:
-                  <pre><code>const commandBuffer = commandEncoder.finish();
-device.queue.submit([commandBuffer]);</code></pre>
-                </li>
-              </ol>
-            </article>
-
-            <!-- TAB 5: COMPUTE -->
-            <article id="tab-compute" class="tab-pane">
-              <h3>4. Priama podpora Compute Shaderov v WGSL</h3>
-              <p>
-                Vo WebGL sa všeobecné výpočty (GPGPU) museli simulovať vykreslením 2D obdĺžnika na celú obrazovku a kódovaním dát do farieb (RGBA float textúr).
-              </p>
-              <p>
-                WebGPU prináša natívne <strong>Compute Shadery</strong> písané v modernom typovom jazyku <strong>WGSL (WebGPU Shading Language)</strong>. Výpočet sa rozdelí na tisíce paralelných vlákien združených do tzv. <em>Workgroups</em>:
-              </p>
-              <pre><code>// Každá pracovná skupina spracováva dlaždicu 16x16 buniek (256 paralelných vlákien)
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-  let x = id.x;
-  let y = id.y;
-
-  // Priamy prístup do pamäte buniek:
-  let index = y * params.width + x;
-  let neighbors = countNeighbors(x, y);
-
-  // Paralelné vyhodnotenie pravidla B3/S23 (Conway)
-  ...
-}</code></pre>
-              <p>
-                Vďaka tomuto dokáže naša aplikácia simulovať <strong>vyše 4 milióny buniek</strong> (pri mriežke 2048 × 2048) paralelne na GPU v zlomku milisekundy pri stabilných 60+ FPS!
-              </p>
-            </article>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script type="module" src="./src/main.ts"></script>
 </body>
+
 </html>
