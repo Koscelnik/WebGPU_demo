@@ -1,56 +1,48 @@
-# WebGPU Compute Demo: Cellular Automata
+# WebGPU Cellular Automata Sandbox
 
-Tento projekt predstavuje modernú implementáciu celulárneho automatu počítaného plne paralelne priamo na grafickej karte prostredníctvom nového webového štandardu **WebGPU** a jazyka **WGSL (WebGPU Shading Language)**.
+Paralelné celulárne automaty počítané priamo na GPU pomocou **WebGPU** a compute shaderov v **WGSL**.
 
-## 💻 Lokálne spustenie a inštalácia
+## 🚀 Funkcie
+
+- **Game of Life:** Klasický Conwayov celulárny automat s toroidnou mriežkou a vekovým farbením buniek.
+- **Piesok (Sand Automata):** Simulácia sypkého piesku a pevných prekážok s podporou vlastných 3×3 maticových pravidiel a dynamickej farebnej palety.
+- **GPU akcelerácia:** Paralelný výpočet v compute passoch s vysokou snímkovou frekvenciou (až do 240 krokov/s).
+- **Interaktívne kreslenie:** Kreslenie štetcom priamo na mriežku s plynulým dávkovaním zápisov do pamäte GPU.
+
+## 💻 Spustenie projektu
 
 ### Požiadavky
-- **Node.js** (verzia 18 alebo novšia)
-- **Prehliadač s podporou WebGPU**:
-  - Google Chrome 113+ alebo Microsoft Edge 113+
-  - Safari 18+ (macOS Sonoma / iOS 18)
-  - Firefox Nightly (s povoleným príznakom `dom.webgpu.enabled` v `about:config`)
+- **Node.js** (18+)
+- **Prehliadač s podporou WebGPU** (Chrome 113+, Edge 113+, Safari 18+)
 
-### Inštalácia závislostí
 ```bash
+# Inštalácia závislostí
 npm install
-```
 
-### Spustenie vývojového servera
-```bash
+# Spustenie vývojového servera (http://localhost:5173/)
 npm run dev
-```
-Aplikácia sa spustí na adrese `http://localhost:5173/`.
 
-### Zostavenie produkčného balíčka (Build)
-```bash
+# Zostavenie produkčného balíčka
 npm run build
 ```
-Vytvorí optimalizované produkčné súbory v priečinku `dist/`.
 
----
-
-## 📁 Štruktúra projektu
+## 📁 Štruktúra
 
 ```
-├── index.html              # HTML rozhranie s plátnom a ovládacím panelom
-├── package.json            # Závislosti projektu (Vite, TypeScript, WebGPU types)
-├── tsconfig.json           # Konfigurácia TypeScriptu
-├── README.md               # Dokumentácia projektu
-└── src/
-    ├── main.ts             # Vstupný bod aplikácie, obsluha udalostí a render slučka
-    ├── style.css           # Štýly používateľského rozhrania
-    ├── vite-env.d.ts       # Typové deklarácie pre WGSL a Vite
-    ├── shaders/
-    │   ├── compute.wgsl    # WebGPU Compute shader pre Game of Life (B3/S23)
-    │   └── render.wgsl     # WebGPU Render shader s fullscreen trojuholníkom
-    └── webgpu/
-        └── simulator.ts    # Jadro simulátora (správa bufferov, PSOs a pipelines)
+├── index.html                  # UI rozhranie, canvas a ovládací panel
+├── src/
+│   ├── main.ts                 # Obsluha UI, kreslenia a animačná slučka
+│   ├── style.css               # Štýly rozhrania
+│   ├── shaders/
+│   │   ├── gol_compute.wgsl    # Compute shader pre Game of Life
+│   │   ├── gol_render.wgsl     # Render shader pre Game of Life
+│   │   ├── sand_compute.wgsl   # Compute shader pre 3×3 maticové pravidlá
+│   │   └── sand_render.wgsl    # Render shader s paletovou textúrou
+│   └── webgpu/
+│       ├── defaults.ts         # Predvolené typy (piesok, stena) a pravidlá
+│       └── unified_simulator.ts# Jednotný GPU manažér pre oba módy
 ```
 
----
+## 🔗 Repozitár
 
-## 👤 Autor a Git repozitár
-
-- **Git Repozitár:** [https://github.com/Koscelnik/WebGPU_demo.git](https://github.com/Koscelnik/WebGPU_demo.git)
-- Vypracované pre tému: **WebGPU – Analýza moderného rozhrania a implementácia bunkového automatu**
+[https://github.com/Koscelnik/WebGPU_demo.git](https://github.com/Koscelnik/WebGPU_demo.git)

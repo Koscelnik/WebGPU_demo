@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebGPU Parallel Game of Life</title>
+  <title>WebGPU Cellular Automata Sandbox</title>
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 
@@ -16,15 +16,12 @@
         <span class="banner-icon">⚠️</span>
         <div>
           <h3>Váš prehliadač nepodporuje WebGPU</h3>
-          <p>
-            WebGPU vyžaduje moderný prehliadač (Google Chrome 113+, Microsoft Edge 113+, Safari 18+ alebo Firefox
-            Nightly s povoleným príznakom <code>dom.webgpu.enabled</code>).
-          </p>
+          <p>WebGPU vyžaduje moderný prehliadač (Google Chrome 113+, Microsoft Edge 113+, Safari 18+).</p>
         </div>
       </div>
     </div>
 
-    <!-- Main Canvas Viewport (Square, Maximized to Fill Screen) -->
+    <!-- Main Canvas Viewport (Square, Maximized) -->
     <main class="canvas-container">
       <canvas id="gpu-canvas"></canvas>
 
@@ -45,7 +42,11 @@
           </div>
           <div class="hud-item">
             <span class="hud-label">Bunky:</span>
-            <span id="cells-val" class="hud-value">262,144</span>
+            <span id="cells-val" class="hud-value">262 144</span>
+          </div>
+          <div class="hud-item">
+            <span class="hud-label">Mód:</span>
+            <span id="mode-val" class="hud-value highlight">Game of Life</span>
           </div>
           <div class="hud-item">
             <span class="hud-label">GPU:</span>
@@ -55,20 +56,31 @@
       </div>
     </main>
 
-    <!-- Bare-bone Control Panel -->
+    <!-- Sidebar Control Panel -->
     <aside class="control-panel">
+      <!-- Header with Mode Switcher (replacing static badge) -->
       <header class="panel-header">
-        <div class="logo-area">
-          <div class="gpu-badge">WebGPU</div>
-          <h1>Game of Life</h1>
+        <div class="mode-switcher-container">
+          <div class="gpu-badge-mini">WebGPU</div>
+          <div class="mode-tabs" role="tablist">
+            <button id="mode-gol" class="mode-tab active" role="tab" aria-selected="true"
+              title="Prepnúť na Conway's Game of Life">
+              <span class="mode-icon">🧬</span> Game of Life
+            </button>
+            <button id="mode-sand" class="mode-tab" role="tab" aria-selected="false"
+              title="Prepnúť na Pieskový Automat s pravidlami">
+              <span class="mode-icon">⏳</span> Piesok (Sand)
+            </button>
+          </div>
         </div>
       </header>
 
+      <!-- Common Simulation Buttons -->
       <section class="panel-section">
         <div class="btn-group main-controls">
           <button id="btn-play" class="btn btn-primary">
-            <span class="icon" id="play-icon">▶</span>
-            <span id="play-text">Spustiť</span>
+            <span class="icon" id="play-icon">⏸</span>
+            <span id="play-text">Pozastaviť</span>
           </button>
           <button id="btn-step" class="btn btn-secondary" title="Krok o 1 generáciu">
             <span class="icon">⏭</span> Krok
@@ -82,27 +94,30 @@
         </div>
       </section>
 
+      <!-- Common Simulation Settings -->
       <section class="panel-section">
         <div class="form-row">
           <label for="resolution-select">Rozlíšenie mriežky:</label>
           <select id="resolution-select" class="form-select">
+            <option value="64">64 × 64 (4k buniek)</option>
             <option value="128">128 × 128 (16k buniek)</option>
             <option value="256">256 × 256 (65k buniek)</option>
             <option value="512" selected>512 × 512 (262k buniek)</option>
             <option value="1024">1024 × 1024 (1M buniek)</option>
-            <option value="2048">2048 × 2048 (4.2M buniek)</option>
+            <option value="2048">2048 × 2048 (4M buniek)</option>
+            <option value="4096">4096 × 4096 (16M buniek)</option>
           </select>
         </div>
 
         <div class="form-row">
           <label for="speed-limit">Rýchlosť simulácie (krokov/s):</label>
           <div class="slider-with-val">
-            <input type="range" id="speed-limit" min="10" max="240" value="60" step="5" class="form-slider" />
+            <input type="range" id="speed-limit" min="5" max="240" value="60" step="5" class="form-slider" />
             <span id="speed-val" class="slider-num">60</span>
           </div>
         </div>
 
-        <div class="form-row">
+        <div id="substeps-row" class="form-row">
           <label for="steps-per-frame">Substeps (výpočtov na frame):</label>
           <div class="slider-with-val">
             <input type="range" id="steps-per-frame" min="1" max="20" value="1" class="form-slider" />
@@ -118,24 +133,58 @@
         </div>
       </section>
 
-      <section class="panel-section">
-        <label class="section-label">Kreslenie myšou</label>
+      <!-- GAME OF LIFE ONLY: Brush controls -->
+      <section id="gol-controls" class="panel-section">
+        <label class="section-label">Kreslenie myšou (Game of Life)</label>
         <div class="form-row">
           <label>Nástroj:</label>
           <div class="btn-group toggle-group">
-            <button id="brush-draw" class="btn btn-sm btn-toggle active">Živá bunka</button>
-            <button id="brush-erase" class="btn btn-sm btn-toggle">Guma</button>
+            <button id="gol-brush-draw" class="btn btn-sm btn-toggle active">Živá bunka</button>
+            <button id="gol-brush-erase" class="btn btn-sm btn-toggle">Guma</button>
           </div>
         </div>
         <div class="form-row">
-          <label for="brush-size">Veľkosť štetca:</label>
+          <label for="gol-brush-size">Veľkosť štetca:</label>
           <div class="slider-with-val">
-            <input type="range" id="brush-size" min="0" max="15" value="1" class="form-slider" />
-            <span id="brush-val" class="slider-num">1 px</span>
+            <input type="range" id="gol-brush-size" min="1" max="20" value="2" class="form-slider" />
+            <span id="gol-brush-val" class="slider-num">2 px</span>
           </div>
         </div>
       </section>
 
+      <!-- SAND ONLY: Pixel Types List -->
+      <section id="sand-types-section" class="panel-section hidden">
+        <div class="section-header-row">
+          <label class="section-label">Typy pixelov</label>
+          <button id="btn-add-type" class="btn btn-secondary btn-xs">+ Pridať typ</button>
+        </div>
+        <div id="type-list" class="type-list"></div>
+      </section>
+
+      <!-- SAND ONLY: Brush Palette & Size -->
+      <section id="sand-brush-section" class="panel-section hidden">
+        <label class="section-label">Štetec (Vyberte materiál)</label>
+        <div id="brush-palette" class="brush-palette"></div>
+        <div class="form-row" style="margin-top: 0.5rem;">
+          <label for="sand-brush-size">Veľkosť štetca:</label>
+          <div class="slider-with-val">
+            <input type="range" id="sand-brush-size" min="1" max="25" value="4" class="form-slider" />
+            <span id="sand-brush-val" class="slider-num">4 px</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- SAND ONLY: 3x3 Rules List -->
+      <section id="sand-rules-section" class="panel-section rules-section hidden">
+        <div class="section-header-row">
+          <label class="section-label">Pravidlá (3×3 matica)</label>
+          <button id="btn-add-rule" class="btn btn-secondary btn-xs">+ Nové pravidlo</button>
+        </div>
+        <p class="rules-hint">Kliknutím na bunku v matici vyberiete zhodu (alebo viacero typov / ✱ pre čokoľvek).</p>
+        <div id="rule-list" class="rule-list"></div>
+      </section>
+
+      <!-- Footer -->
       <footer class="panel-footer">
         <div class="github-link-row">
           <a href="https://github.com/Koscelnik/WebGPU_demo.git" target="_blank" rel="noopener noreferrer">
@@ -148,6 +197,9 @@
         </div>
       </footer>
     </aside>
+
+    <!-- Floating Cell Picker Popup (for editing 3x3 rule cells) -->
+    <div id="cell-picker" class="cell-picker hidden"></div>
   </div>
 
   <script type="module" src="./src/main.ts"></script>
