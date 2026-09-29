@@ -5,7 +5,7 @@ export interface SimulatorOptions {
   canvas: HTMLCanvasElement;
   width?: number;
   height?: number;
-  gridLines?: boolean;
+  showGrid?: boolean;
 }
 
 export class WebGPUSimulator {
@@ -17,7 +17,7 @@ export class WebGPUSimulator {
 
   public width: number;
   public height: number;
-  public gridLines: boolean;
+  public showGrid: boolean;
   public generation: number = 0;
 
   // Explicit Memory Buffers
@@ -39,14 +39,11 @@ export class WebGPUSimulator {
   // Ping-pong state tracker: 0 means A has current state, 1 means B has current state
   private activeBufferIndex: number = 0;
 
-  // CPU staging array for quick updates / reads
-  private cpuGrid!: Uint32Array;
-
   constructor(options: SimulatorOptions) {
     this.canvas = options.canvas;
     this.width = options.width ?? 512;
     this.height = options.height ?? 512;
-    this.gridLines = options.gridLines ?? false;
+    this.showGrid = options.showGrid ?? true;
   }
 
   public static isSupported(): boolean {
@@ -84,18 +81,26 @@ export class WebGPUSimulator {
       alphaMode: 'opaque'
     });
 
-    // Create Pipeline State Objects (PSOs)
     this.initPipelines();
-
-    // Create Buffers & Bind Groups
     this.initBuffers();
-
-    // Initial random state
     this.randomize(0.2);
   }
 
-  public getAdapterInfo(): GPUAdapterInfo | null {
-    return (this.adapter as any)?.info ?? null;
+  public async getAdapterDescription(): Promise<string> {
+    if (!this.adapter) return "Neznáme GPU";
+    if ('info' in this.adapter && (this.adapter as any).info) {
+      const info = (this.adapter as any).info;
+      return info.description || info.device || info.architecture || info.vendor || "WebGPU GPU";
+    }
+    if ('requestAdapterInfo' in this.adapter) {
+      try {
+        const info = await (this.adapter as any).requestAdapterInfo();
+        return info.description || info.device || info.architecture || info.vendor || "WebGPU GPU";
+      } catch {
+        // fallback
+      }
+    }
+    return "WebGPU Akcelerátor";
   }
 
   private initPipelines(): void {
@@ -139,8 +144,6 @@ export class WebGPUSimulator {
   private initBuffers(): void {
     const totalCells = this.width * this.height;
     const bufferSize = totalCells * Uint32Array.BYTES_PER_ELEMENT;
-
-    this.cpuGrid = new Uint32Array(totalCells);
 
     if (this.cellBufferA) this.cellBufferA.destroy();
     if (this.cellBufferB) this.cellBufferB.destroy();
@@ -216,17 +219,30 @@ export class WebGPUSimulator {
     this.activeBufferIndex = 0;
   }
 
-  private updateUniforms(): void {
+  public updateUniforms(): void {
     const computeData = new Uint32Array([this.width, this.height, 0, 0]);
     this.device.queue.writeBuffer(this.computeUniformBuffer, 0, computeData as unknown as BufferSource);
 
-    const renderData = new Uint32Array([
-      this.width,
-      this.height,
-      this.gridLines ? 1 : 0,
-      0
-    ]);
-    this.device.queue.writeBuffer(this.renderUniformBuffer, 0, renderData as unknown as BufferSource);
+    // Mixed u32 and f32 uniform buffer matching RenderParams in render.wgsl
+    const renderBuffer = new ArrayBuffer(16);
+    const u32View = new Uint32Array(renderBuffer);
+    const f32View = new Float32Array(renderBuffer);
+
+    u32View[0] = this.width;
+    u32View[1] = this.height;
+    f32View[2] = this.canvas.width;
+    u32View[3] = this.showGrid ? 1 : 0;
+
+    this.device.queue.writeBuffer(this.renderUniformBuffer, 0, renderBuffer as unknown as BufferSource);
+  }
+
+  public setShowGrid(enabled: boolean): void {
+    this.showGrid = enabled;
+    this.updateUniforms();
+  }
+
+  public updateCanvasSize(): void {
+    this.updateUniforms();
   }
 
   public setGridResolution(width: number, height: number): void {
@@ -238,53 +254,52 @@ export class WebGPUSimulator {
     this.randomize(0.2);
   }
 
-  public setGridLines(enabled: boolean): void {
-    this.gridLines = enabled;
-    this.updateUniforms();
-  }
-
-  public uploadCpuGridToGpu(): void {
-    const targetBuffer = this.activeBufferIndex === 0 ? this.cellBufferA : this.cellBufferB;
-    this.device.queue.writeBuffer(targetBuffer, 0, this.cpuGrid as unknown as BufferSource);
-  }
-
   public clear(): void {
-    this.cpuGrid.fill(0);
-    this.uploadCpuGridToGpu();
+    const totalCells = this.width * this.height;
+    const zeroData = new Uint32Array(totalCells);
+    this.device.queue.writeBuffer(this.cellBufferA, 0, zeroData as unknown as BufferSource);
+    this.device.queue.writeBuffer(this.cellBufferB, 0, zeroData as unknown as BufferSource);
     this.generation = 0;
   }
 
   public randomize(density: number = 0.25): void {
-    const total = this.width * this.height;
-    for (let i = 0; i < total; i++) {
-      this.cpuGrid[i] = Math.random() < density ? 1 : 0;
+    const totalCells = this.width * this.height;
+    const randData = new Uint32Array(totalCells);
+    for (let i = 0; i < totalCells; i++) {
+      randData[i] = Math.random() < density ? 1 : 0;
     }
-    this.uploadCpuGridToGpu();
+    this.device.queue.writeBuffer(this.cellBufferA, 0, randData as unknown as BufferSource);
+    this.device.queue.writeBuffer(this.cellBufferB, 0, randData as unknown as BufferSource);
     this.generation = 0;
   }
 
-  public setCellAtNormalized(u: number, v: number, radius: number = 1, alive: boolean = true): void {
+  /**
+   * Directly updates only the painted cells in the active GPU buffer
+   * without overwriting or resetting the rest of the simulation!
+   */
+  public paintCellsNormalized(u: number, v: number, radius: number = 1, alive: boolean = true): void {
     const centerX = Math.floor(u * this.width);
     const centerY = Math.floor(v * this.height);
+    const targetBuffer = this.activeBufferIndex === 0 ? this.cellBufferA : this.cellBufferB;
+    const fillVal = alive ? 1 : 0;
 
-    let changed = false;
     for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        if (dx * dx + dy * dy <= radius * radius) {
-          const x = (centerX + dx + this.width) % this.width;
-          const y = (centerY + dy + this.height) % this.height;
-          const index = y * this.width + x;
-          const newVal = alive ? 1 : 0;
-          if (this.cpuGrid[index] !== newVal) {
-            this.cpuGrid[index] = newVal;
-            changed = true;
-          }
-        }
-      }
-    }
+      const y = centerY + dy;
+      if (y < 0 || y >= this.height) continue;
 
-    if (changed) {
-      this.uploadCpuGridToGpu();
+      const dxLimit = Math.floor(Math.sqrt(Math.max(0, radius * radius - dy * dy)));
+      const minX = Math.max(0, centerX - dxLimit);
+      const maxX = Math.min(this.width - 1, centerX + dxLimit);
+      const spanWidth = maxX - minX + 1;
+      if (spanWidth <= 0) continue;
+
+      const rowData = new Uint32Array(spanWidth);
+      if (fillVal === 1) {
+        rowData.fill(1);
+      }
+
+      const byteOffset = (y * this.width + minX) * Uint32Array.BYTES_PER_ELEMENT;
+      this.device.queue.writeBuffer(targetBuffer, byteOffset, rowData as unknown as BufferSource);
     }
   }
 

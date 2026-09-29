@@ -23,7 +23,7 @@ const stepsSlider = document.getElementById('steps-per-frame') as HTMLInputEleme
 const stepsVal = document.getElementById('steps-val') as HTMLSpanElement;
 const speedSlider = document.getElementById('speed-limit') as HTMLInputElement;
 const speedVal = document.getElementById('speed-val') as HTMLSpanElement;
-const gridlinesCheckbox = document.getElementById('gridlines-checkbox') as HTMLInputElement;
+const gridToggle = document.getElementById('grid-toggle') as HTMLInputElement;
 
 const brushDrawBtn = document.getElementById('brush-draw') as HTMLButtonElement;
 const brushEraseBtn = document.getElementById('brush-erase') as HTMLButtonElement;
@@ -49,16 +49,16 @@ let brushRadius = 1;
 function updateCanvasDimensions() {
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
-  // Ensure square canvas pixel buffer matching square display
   const size = Math.min(rect.width, rect.height);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const pixelSize = Math.max(128, Math.floor(size * dpr));
+  const pixelSize = Math.max(128, Math.round(size * dpr));
 
   if (canvas.width !== pixelSize || canvas.height !== pixelSize) {
     canvas.width = pixelSize;
     canvas.height = pixelSize;
-    if (simulator && !isRunning) {
-      simulator.renderOnly();
+    if (simulator) {
+      simulator.updateCanvasSize();
+      if (!isRunning) simulator.renderOnly();
     }
   }
 }
@@ -79,7 +79,7 @@ async function startApp() {
     canvas,
     width: initialRes,
     height: initialRes,
-    gridLines: gridlinesCheckbox.checked
+    showGrid: gridToggle ? gridToggle.checked : true
   });
 
   try {
@@ -91,13 +91,8 @@ async function startApp() {
     return;
   }
 
-  const adapterInfo = simulator.getAdapterInfo();
-  if (adapterInfo) {
-    const name = (adapterInfo as any).device || (adapterInfo as any).architecture || adapterInfo.vendor || "WebGPU GPU";
-    gpuVal.textContent = name;
-  } else {
-    gpuVal.textContent = "WebGPU Akcelerátor";
-  }
+  const gpuName = await simulator.getAdapterDescription();
+  gpuVal.textContent = gpuName;
 
   updateCellCounter();
   setupEventListeners();
@@ -121,7 +116,6 @@ function loop(currentTime: number) {
 
   renderFrameCount++;
 
-  // Performance metrics update every 500ms
   const elapsedMetrics = currentTime - lastMetricsUpdateTime;
   if (elapsedMetrics >= 500) {
     const fps = Math.round((renderFrameCount * 1000) / elapsedMetrics);
@@ -141,7 +135,7 @@ function loop(currentTime: number) {
     while (accumulatedTime >= stepInterval) {
       stepsToExecute += stepsPerFrame;
       accumulatedTime -= stepInterval;
-      if (stepsToExecute >= 40) break; // clamp to prevent death spiral on tab switch
+      if (stepsToExecute >= 40) break;
     }
 
     if (stepsToExecute > 0) {
@@ -150,6 +144,14 @@ function loop(currentTime: number) {
       genVal.textContent = simulator.generation.toLocaleString('sk-SK');
     }
   }
+}
+
+function pauseSimulation() {
+  if (!isRunning) return;
+  isRunning = false;
+  btnPlay.classList.remove('running');
+  playIcon.textContent = '▶';
+  playText.textContent = 'Spustiť';
 }
 
 function togglePlay() {
@@ -174,10 +176,8 @@ function paintAtMouseEvent(e: MouseEvent) {
   const v = (e.clientY - rect.top) / rect.height;
 
   if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
-    simulator.setCellAtNormalized(u, v, brushRadius, brushMode === 'draw');
-    if (!isRunning) {
-      simulator.renderOnly();
-    }
+    simulator.paintCellsNormalized(u, v, brushRadius, brushMode === 'draw');
+    simulator.renderOnly();
   }
 }
 
@@ -202,14 +202,14 @@ function setupEventListeners() {
     if (!simulator) return;
     simulator.randomize(0.25);
     genVal.textContent = '0';
-    if (!isRunning) simulator.renderOnly();
+    simulator.renderOnly();
   });
 
   btnClear.addEventListener('click', () => {
     if (!simulator) return;
     simulator.clear();
     genVal.textContent = '0';
-    if (!isRunning) simulator.renderOnly();
+    simulator.renderOnly();
   });
 
   resolutionSelect.addEventListener('change', () => {
@@ -231,11 +231,13 @@ function setupEventListeners() {
     speedVal.textContent = targetSpeed.toString();
   });
 
-  gridlinesCheckbox.addEventListener('change', () => {
-    if (!simulator) return;
-    simulator.setGridLines(gridlinesCheckbox.checked);
-    if (!isRunning) simulator.renderOnly();
-  });
+  if (gridToggle) {
+    gridToggle.addEventListener('change', () => {
+      if (!simulator) return;
+      simulator.setShowGrid(gridToggle.checked);
+      if (!isRunning) simulator.renderOnly();
+    });
+  }
 
   brushDrawBtn.addEventListener('click', () => {
     brushMode = 'draw';
@@ -256,6 +258,7 @@ function setupEventListeners() {
 
   canvas.addEventListener('pointerdown', (e) => {
     isDrawing = true;
+    pauseSimulation();
     paintAtMouseEvent(e);
   });
 

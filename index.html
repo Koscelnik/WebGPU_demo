@@ -24,7 +24,7 @@
       </div>
     </div>
 
-    <!-- Main Canvas Viewport (Square, Pixel-Accurate) -->
+    <!-- Main Canvas Viewport (Square, Maximized to Fill Screen) -->
     <main class="canvas-container">
       <canvas id="gpu-canvas"></canvas>
 
@@ -52,10 +52,6 @@
             <span id="gpu-val" class="hud-value text-ellipsis">Zisťujem...</span>
           </div>
         </div>
-      </div>
-
-      <div class="canvas-hint">
-        <span>💡 Kreslite myšou po mriežke. Medzerník = Štart/Pauza.</span>
       </div>
     </main>
 
@@ -115,8 +111,8 @@
         </div>
 
         <div class="form-row checkbox-row">
-          <label for="gridlines-checkbox">
-            <input type="checkbox" id="gridlines-checkbox" />
+          <label for="grid-toggle">
+            <input type="checkbox" id="grid-toggle" checked />
             Zobraziť mriežku
           </label>
         </div>
